@@ -1,0 +1,26 @@
+#!/usr/bin/env bash
+# WORKTREES.md enforcement: reject commits in the main clone.
+# Worktrees are unaffected.
+set -e
+
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=lib.sh
+source "$HOOK_DIR/lib.sh"
+
+if is_main_clone; then
+  cat >&2 <<'EOF'
+✋ Blocked by WORKTREES.md policy: commits are not allowed in the main clone.
+
+  The main clone is a read-only mirror of origin/dev. Commit inside a worktree:
+      cd <project-root>/.worktrees/<session-id>/<repo>/
+
+  To create a new worktree from this main clone:
+      git worktree add <project-root>/.worktrees/<session-id>/<repo> \
+          -b feature/<slug> origin/dev
+
+  See WORKTREES.md for the full flow.
+EOF
+  exit 1
+fi
+
+exit 0

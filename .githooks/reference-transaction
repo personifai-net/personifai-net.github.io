@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# WORKTREES.md enforcement: in the main clone, protect dev/staging/main from
+# non-fast-forward updates and deletion. Non-protected branch operations
+# (create/update/delete) are allowed — commits are blocked by pre-commit, so
+# a stray ref in the main clone is harmless. Critically, this permits
+# `git worktree add -b <branch>` which is how every feature worktree starts.
+# Worktrees themselves are unaffected.
+#
+# Git invokes this hook with $1 ∈ {prepared, committed, aborted}.
+# Only 'prepared' can abort the transaction via non-zero exit.
+
+set -e
+[ "$1" = "prepared" ] || exit 0
+
+HOOK_DIR=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=lib.sh
+source "$HOOK_DIR/lib.sh"
+
+is_main_clone || exit 0
+
+ZERO="0000000000000000000000000000000000000000"
+
+while read -r old new ref; do
+  case "$ref" in
+    refs/heads/dev|refs/heads/staging|refs/heads/main)
+      if [ "$new" = "$ZERO" ]; then
+        echo "✋ Deletion of protected branch $ref rejected in main clone (WORKTREES.md)." >&2
+        exit 1
+      fi
+      if [ "$old" != "$ZERO" ] && \
+         ! git merge-base --is-ancestor "$old" "$new" 2>/dev/null; then
+        echo "✋ Non-fast-forward update to $ref rejected in main clone (WORKTREES.md)." >&2
+        echo "   Don't reset or rebase protected branches locally." >&2
+        exit 1
+      fi
+      ;;
+    *)
+      # Non-protected refs: allow create/update/delete. pre-commit blocks
+      # commits, so the main clone can't accumulate new work regardless.
+      ;;
+  esac
+done
+
+exit 0
